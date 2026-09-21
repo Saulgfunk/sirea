@@ -60,7 +60,7 @@ astrologersRouter.get('/', async (req, res) => {
       avgRating: minRating ? { gte: minRating } : undefined,
       badges: badge ? { some: { type: badge, revokedAt: null } } : undefined,
     },
-    include: { badges: { where: { revokedAt: null } }, user: { select: { id: true, displayName: true } } },
+    include: { badges: { where: { revokedAt: null } }, user: { select: { id: true, displayName: true, avatarUrl: true } } },
     orderBy: [{ avgRating: 'desc' }],
     take: 50,
   });
@@ -77,7 +77,7 @@ astrologersRouter.get('/:id', async (req, res) => {
     include: {
       badges: { where: { revokedAt: null } },
       posts: { orderBy: { createdAt: 'desc' }, take: 20 },
-      user: { select: { id: true, displayName: true } },
+      user: { select: { id: true, displayName: true, avatarUrl: true } },
     },
   });
   if (!astrologer) {

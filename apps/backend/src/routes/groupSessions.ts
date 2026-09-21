@@ -15,7 +15,9 @@ groupSessionsRouter.get('/', requireAuth, async (_req, res) => {
   const sessions = await prisma.session.findMany({
     where: { type: 'group', status: 'scheduled', scheduledAt: { gte: new Date() } },
     include: {
-      astrologer: { select: { userId: true, bio: true } },
+      astrologer: {
+        select: { userId: true, bio: true, user: { select: { displayName: true, avatarUrl: true } } },
+      },
       _count: { select: { participants: true } },
     },
     orderBy: { scheduledAt: 'asc' },

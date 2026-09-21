@@ -25,7 +25,14 @@
     },
     "plugins": [
       "expo-router",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Sirea needs access to your photos to upload a kahve falı cup photo.",
+          "cameraPermission": "Sirea needs camera access to photograph your coffee cup for a kahve falı reading."
+        }
+      ]
     ]
   }
 }

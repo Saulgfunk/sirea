@@ -13,12 +13,14 @@ import { ratingsRouter } from './routes/ratings.js';
 import { referralsRouter } from './routes/referrals.js';
 import { sessionsRouter } from './routes/sessions.js';
 import { subscriptionsRouter } from './routes/subscriptions.js';
+import { uploadsDir, uploadsRouter } from './routes/uploads.js';
 import { walletRouter } from './routes/wallet.js';
 
 export const app = express();
 
 app.use(cors());
 app.use(express.json());
+app.use('/uploads', express.static(uploadsDir));
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
@@ -37,6 +39,7 @@ app.use('/subscription', subscriptionsRouter);
 app.use('/', referralsRouter); // /astrologers/:id/referral-code, /referrals/:code/redeem
 app.use('/admin', adminRouter); // /admin/fraud-signals
 app.use('/admin', adminBadgesRouter); // /admin/badge-applications/:id, /admin/badges/*
+app.use('/uploads', uploadsRouter);
 
 app.use((req, res) => {
   res.status(404).json({ error: `No route for ${req.method} ${req.path}` });

@@ -48,7 +48,7 @@ authRouter.post('/signup', authLimiter, async (req, res) => {
   const token = signAuthToken({ sub: user.id, role: user.role });
   res.status(201).json({
     token,
-    user: { id: user.id, email: user.email, phone: user.phone, displayName: user.displayName },
+    user: { id: user.id, email: user.email, phone: user.phone, displayName: user.displayName, avatarUrl: user.avatarUrl },
   });
 });
 
@@ -76,7 +76,7 @@ authRouter.post('/login', authLimiter, async (req, res) => {
   const token = signAuthToken({ sub: user.id, role: user.role });
   res.json({
     token,
-    user: { id: user.id, email: user.email, phone: user.phone, displayName: user.displayName },
+    user: { id: user.id, email: user.email, phone: user.phone, displayName: user.displayName, avatarUrl: user.avatarUrl },
   });
 });
 
@@ -95,5 +95,5 @@ authRouter.get('/me', requireAuth, async (req, res) => {
     res.status(404).json({ error: 'User not found' });
     return;
   }
-  res.json({ id: user.id, email: user.email, phone: user.phone, displayName: user.displayName });
+  res.json({ id: user.id, email: user.email, phone: user.phone, displayName: user.displayName, avatarUrl: user.avatarUrl });
 });

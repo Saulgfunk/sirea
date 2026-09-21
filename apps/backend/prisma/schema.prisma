@@ -102,6 +102,7 @@ model User {
   phone         String?   @unique
   passwordHash  String    @map("password_hash")
   displayName   String?   @map("display_name")
+  avatarUrl     String?   @map("avatar_url")
   role          UserRole  @default(user)
   emailVerifiedAt DateTime? @map("email_verified_at")
   createdAt     DateTime  @default(now()) @map("created_at")

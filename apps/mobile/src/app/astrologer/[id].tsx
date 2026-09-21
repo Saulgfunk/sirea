@@ -5,6 +5,7 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View
 import { ApiError } from '../../api/client';
 import { sireaApi } from '../../api/sirea';
 import { useAuth } from '../../auth/AuthContext';
+import { Avatar } from '../../components/Avatar';
 import { BadgePill } from '../../components/BadgePill';
 import { useApi } from '../../hooks/useApi';
 import { color, radius, space, type } from '../../theme/tokens';
@@ -68,7 +69,9 @@ export default function AstrologerProfileScreen() {
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <View style={styles.avatar} />
+      <View style={styles.avatarWrap}>
+        <Avatar uri={astrologer.user?.avatarUrl} size={96} />
+      </View>
       <Text style={styles.name}>{astrologer.user?.displayName || 'Astrologer'}</Text>
       <View style={styles.badgeRow}>
         {astrologer.badges.length ? (
@@ -129,7 +132,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: color.void },
   centered: { alignItems: 'center', justifyContent: 'center' },
   content: { padding: space[5], alignItems: 'center', gap: space[3] },
-  avatar: { width: 96, height: 96, borderRadius: radius.pill, backgroundColor: color.surface2, marginBottom: space[2] },
+  avatarWrap: { marginBottom: space[2] },
   name: { ...type.displayM, color: color.ink },
   badgeRow: { flexDirection: 'row', gap: space[2] },
   noBadge: { ...type.caption, color: color.inkMuted, textTransform: 'none' },

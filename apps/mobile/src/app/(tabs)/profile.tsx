@@ -275,6 +275,65 @@ function AstrologerPanel({ astrologer, onPosted }: { astrologer: AstrologerProfi
           ))}
         </View>
       )}
+
+      <View style={styles.divider} />
+      <CreateSessionSlotForm astrologerId={astrologer.userId} />
+    </View>
+  );
+}
+
+function CreateSessionSlotForm({ astrologerId }: { astrologerId: string }) {
+  const [daysFromNow, setDaysFromNow] = useState('2');
+  const [duration, setDuration] = useState('30');
+  const [price, setPrice] = useState('25');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [created, setCreated] = useState(false);
+
+  async function submit() {
+    setError(null);
+    setCreated(false);
+    setSubmitting(true);
+    try {
+      const scheduledAt = new Date(Date.now() + Number(daysFromNow) * 24 * 60 * 60 * 1000).toISOString();
+      await sireaApi.sessions.create({
+        type: 'private',
+        scheduledAt,
+        durationMinutes: Number(duration),
+        price: Number(price),
+        paymentModel: 'a_la_carte',
+      });
+      setCreated(true);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Something went wrong');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>Open a session slot</Text>
+      <Text style={styles.sectionHint}>Private session, paid via wallet credit. Shows up on your profile for booking.</Text>
+      <View style={styles.row3}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.label}>Days from now</Text>
+          <TextInput style={styles.input} keyboardType="number-pad" value={daysFromNow} onChangeText={setDaysFromNow} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.label}>Minutes</Text>
+          <TextInput style={styles.input} keyboardType="number-pad" value={duration} onChangeText={setDuration} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.label}>Price ($)</Text>
+          <TextInput style={styles.input} keyboardType="number-pad" value={price} onChangeText={setPrice} />
+        </View>
+      </View>
+      {error && <Text style={styles.error}>{error}</Text>}
+      {created && <Text style={styles.saved}>Slot created.</Text>}
+      <Pressable style={styles.submitButton} onPress={submit} disabled={submitting}>
+        {submitting ? <ActivityIndicator color={color.void} /> : <Text style={styles.submitLabel}>Open slot</Text>}
+      </Pressable>
     </View>
   );
 }
@@ -310,6 +369,7 @@ const styles = StyleSheet.create({
   logoutButton: { alignItems: 'center', marginTop: space[6] },
   logoutLabel: { ...type.bodyS, color: color.inkMuted },
   divider: { height: 1, backgroundColor: color.border, marginVertical: space[5] },
+  row3: { flexDirection: 'row', gap: space[2] },
   section: { gap: space[3] },
   sectionTitle: { ...type.displayXs, color: color.ink },
   sectionHint: { ...type.caption, color: color.inkMuted, textTransform: 'none' },

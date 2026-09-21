@@ -1,8 +1,11 @@
 import { Link } from 'expo-router';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ApiError } from '../../api/client';
 import { sireaApi } from '../../api/sirea';
+import { useAuth } from '../../auth/AuthContext';
+import { Avatar } from '../../components/Avatar';
 import { BadgePill } from '../../components/BadgePill';
 import { useApi } from '../../hooks/useApi';
 import { color, radius, space, type } from '../../theme/tokens';
@@ -46,6 +49,7 @@ export default function DiscoverScreen() {
         contentContainerStyle={styles.list}
         onRefresh={refetch}
         refreshing={loading}
+        ListHeaderComponent={<GroupSessionsRow />}
         ListEmptyComponent={
           <View style={styles.centered}>
             <Text style={styles.emptyText}>No astrologers yet.</Text>
@@ -54,7 +58,7 @@ export default function DiscoverScreen() {
         renderItem={({ item }) => (
           <Link href={{ pathname: '/astrologer/[id]', params: { id: item.userId } }} asChild>
             <Pressable style={styles.card}>
-              <View style={styles.avatar} />
+              <Avatar uri={item.user?.avatarUrl} size={56} />
               <View style={{ flex: 1, gap: space[1] }}>
                 <Text style={styles.name}>{item.user?.displayName || 'Astrologer'}</Text>
                 <Text style={styles.specialties} numberOfLines={1}>
@@ -77,6 +81,48 @@ export default function DiscoverScreen() {
   );
 }
 
+// GS-1: upcoming live group sessions. Premium-gating (GS-2/GS-3) is modeled
+// backend-side as price > 0 — see apps/backend's groupSessions.ts comment.
+function GroupSessionsRow() {
+  const { user } = useAuth();
+  const { data: sessions, refetch } = useApi(
+    () => (user ? sireaApi.groupSessions.list() : Promise.resolve([])),
+    [user?.id]
+  );
+
+  if (!user || !sessions?.length) return null;
+
+  async function join(id: string) {
+    try {
+      await sireaApi.groupSessions.join(id);
+      Alert.alert('Joined', "You're registered — check back once video/voice is available.");
+      refetch();
+    } catch (err) {
+      Alert.alert('Could not join', err instanceof ApiError ? err.message : 'Something went wrong');
+    }
+  }
+
+  return (
+    <View style={styles.groupSection}>
+      <Text style={styles.groupSectionTitle}>Live & upcoming group sessions</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.groupRow}>
+        {sessions.map((s) => (
+          <Pressable key={s.id} style={styles.groupCard} onPress={() => join(s.id)}>
+            <Avatar uri={s.astrologer.user.avatarUrl} size={40} />
+            <Text style={styles.groupHost} numberOfLines={1}>
+              {s.astrologer.user.displayName || 'Astrologer'}
+            </Text>
+            <Text style={styles.groupTime}>{new Date(s.scheduledAt).toLocaleString()}</Text>
+            <Text style={styles.groupMeta}>
+              {Number(s.price) > 0 ? 'Premium' : 'Free'} · {s._count.participants} joined
+            </Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: color.void },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: space[6], gap: space[3] },
@@ -92,9 +138,23 @@ const styles = StyleSheet.create({
     borderColor: color.border,
     padding: space[4],
   },
-  avatar: { width: 56, height: 56, borderRadius: radius.pill, backgroundColor: color.surface2 },
   name: { ...type.displayS, color: color.ink },
   specialties: { ...type.bodyS, color: color.inkMuted },
   badgeRow: { flexDirection: 'row', gap: space[1] },
   stats: { ...type.caption, color: color.inkMuted, textTransform: 'none' },
+  groupSection: { marginBottom: space[4] },
+  groupSectionTitle: { ...type.displayXs, color: color.ink, marginBottom: space[3] },
+  groupRow: { gap: space[3] },
+  groupCard: {
+    width: 160,
+    backgroundColor: color.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: color.purple,
+    padding: space[3],
+    gap: space[1],
+  },
+  groupHost: { ...type.bodyS, color: color.ink, marginTop: space[1] },
+  groupTime: { ...type.caption, color: color.inkMuted, textTransform: 'none' },
+  groupMeta: { ...type.caption, color: color.purple, textTransform: 'none' },
 });

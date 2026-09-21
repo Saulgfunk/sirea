@@ -53,3 +53,29 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
   }
   return data as T;
 }
+
+// Separate from api() because multipart bodies can't be JSON.stringify'd and
+// must NOT set an explicit Content-Type (fetch needs to set its own boundary).
+export async function uploadFile(uri: string, filename: string, mimeType: string): Promise<{ url: string }> {
+  if (!API_URL) {
+    throw new Error('EXPO_PUBLIC_API_URL is not set — see apps/mobile/.env.example');
+  }
+  const token = await getToken();
+  const form = new FormData();
+  // React Native's fetch accepts this {uri, name, type} shape for file fields,
+  // unlike web FormData which expects a Blob/File — do not "fix" this to match
+  // browser conventions.
+  form.append('file', { uri, name: filename, type: mimeType } as unknown as Blob);
+
+  const res = await fetch(`${API_URL}/uploads`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    body: form,
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new ApiError(res.status, typeof data?.error === 'string' ? data.error : 'Upload failed');
+  }
+  return data;
+}

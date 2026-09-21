@@ -1,8 +1,9 @@
 import { Link } from 'expo-router';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { sireaApi } from '../../api/sirea';
+import { Avatar } from '../../components/Avatar';
 import { BadgePill } from '../../components/BadgePill';
 import { useAuth } from '../../auth/AuthContext';
 import { useApi } from '../../hooks/useApi';
@@ -79,7 +80,7 @@ export default function FeedScreen() {
             <Link href={{ pathname: '/astrologer/[id]', params: { id: item.astrologerId } }} asChild>
               <Pressable style={styles.card}>
                 <View style={styles.cardHeader}>
-                  <View style={styles.avatar} />
+                  <Avatar uri={astrologer?.user?.avatarUrl} />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.authorName}>{astrologer?.user?.displayName || 'Astrologer'}</Text>
                     <Text style={styles.timestamp}>{timeAgo(item.createdAt)}</Text>
@@ -91,6 +92,7 @@ export default function FeedScreen() {
                   </View>
                 </View>
                 {item.body && <Text style={styles.postBody}>{item.body}</Text>}
+                {item.mediaUrl && <Image source={{ uri: item.mediaUrl }} style={styles.postImage} />}
               </Pressable>
             </Link>
           );
@@ -115,9 +117,9 @@ const styles = StyleSheet.create({
     gap: space[3],
   },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: space[3] },
-  avatar: { width: 40, height: 40, borderRadius: radius.pill, backgroundColor: color.surface2 },
   authorName: { ...type.displayS, color: color.ink },
   timestamp: { ...type.caption, color: color.inkMuted, textTransform: 'none' },
   badgeRow: { flexDirection: 'row', gap: space[1] },
   postBody: { ...type.bodyM, color: color.inkSoft },
+  postImage: { width: '100%', aspectRatio: 1, borderRadius: radius.md, backgroundColor: color.surface2 },
 });

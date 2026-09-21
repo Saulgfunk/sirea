@@ -21,7 +21,7 @@ feedRouter.get('/', requireAuth, async (req, res) => {
     where: { astrologerId: { in: astrologerIds } },
     include: {
       astrologer: {
-        include: { badges: { where: { revokedAt: null } }, user: { select: { id: true, displayName: true } } },
+        include: { badges: { where: { revokedAt: null } }, user: { select: { id: true, displayName: true, avatarUrl: true } } },
       },
     },
     orderBy: { createdAt: 'desc' },

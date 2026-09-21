@@ -3,6 +3,8 @@ import type {
   AstrologerProfile,
   AuthResponse,
   FeedResponse,
+  GroupSession,
+  KahveFaliOrder,
   Post,
   Session,
   WalletAccount,
@@ -31,7 +33,23 @@ export const sireaApi = {
       api<Post>(`/astrologers/${id}/posts`, { method: 'POST', body: data }),
   },
   sessions: {
+    create: (data: {
+      type: 'private' | 'group' | 'kahve_fali_live';
+      scheduledAt: string;
+      durationMinutes: number;
+      price: number;
+      paymentModel: 'bundled' | 'a_la_carte';
+    }) => api<Session>('/sessions', { method: 'POST', body: data }),
     join: (id: string) => api<void>(`/sessions/${id}/join`, { method: 'POST' }),
+  },
+  groupSessions: {
+    list: () => api<GroupSession[]>('/group-sessions'),
+    join: (id: string) => api<void>(`/group-sessions/${id}/join`, { method: 'POST' }),
+  },
+  kahveFali: {
+    createOrder: (data: { astrologerId: string; photoUrl: string }) =>
+      api<KahveFaliOrder>('/kahve-fali/orders', { method: 'POST', body: data }),
+    getOrder: (id: string) => api<KahveFaliOrder>(`/kahve-fali/orders/${id}`),
   },
   wallet: {
     get: () => api<WalletAccount>('/wallet'),

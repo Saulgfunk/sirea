@@ -1,33 +1,115 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { useState } from 'react';
+import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ApiError, uploadFile } from '../../api/client';
+import { sireaApi } from '../../api/sirea';
+import { useAuth } from '../../auth/AuthContext';
+import { Avatar } from '../../components/Avatar';
+import { useApi } from '../../hooks/useApi';
 import { color, radius, space, type } from '../../theme/tokens';
 
-// Kahve falı: upload → SLA-bound interpretation → reveal (KF-1–KF-4). The reveal
-// screen is meant to feel like a ritual moment (docs/design-system/README.md), not
-// a flat notification — worth designing deliberately once there's a real upload/
-// interpretation pipeline behind it, rather than placeholder-izing that moment here.
+// KF-1/KF-2: photo upload + SLA. The reveal-screen ritual (KF-3, design system
+// README) isn't built — this is a functional upload → order flow, not the
+// considered reveal moment the product doc describes; worth a dedicated pass
+// once there's a real interpretation pipeline to reveal.
 export default function FalimScreen() {
+  const { user } = useAuth();
+  const { data: astrologers } = useApi(() => sireaApi.astrologers.list(), []);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [orderStatus, setOrderStatus] = useState<string | null>(null);
+
+  async function pickPhoto() {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    const result = permission.granted
+      ? await ImagePicker.launchCameraAsync({ quality: 0.7, aspect: [1, 1], allowsEditing: true })
+      : await ImagePicker.launchImageLibraryAsync({ quality: 0.7, aspect: [1, 1], allowsEditing: true });
+    if (!result.canceled && result.assets[0]) {
+      setPhotoUri(result.assets[0].uri);
+    }
+  }
+
+  async function submit() {
+    if (!user) {
+      Alert.alert('Log in required', 'Log in from the Profile tab to order a kahve falı reading.');
+      return;
+    }
+    if (!selectedId || !photoUri) return;
+    setSubmitting(true);
+    setOrderStatus(null);
+    try {
+      const uploaded = await uploadFile(photoUri, 'kahve-fali.jpg', 'image/jpeg');
+      const order = await sireaApi.kahveFali.createOrder({ astrologerId: selectedId, photoUrl: uploaded.url });
+      setOrderStatus(`Ordered — pending, SLA ${new Date(order.slaDeadline).toLocaleString()}`);
+      setPhotoUri(null);
+    } catch (err) {
+      Alert.alert('Could not order', err instanceof ApiError ? err.message : 'Something went wrong');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
-      <View style={styles.content}>
-        <View style={styles.frame}>
-          <Text style={styles.frameLabel}>Upload a photo of your coffee cup</Text>
-        </View>
-        <Text style={styles.helper}>
-          Choose an astrologer, upload your cup, and get an interpretation within their stated turnaround time.
-        </Text>
-        <Pressable style={styles.cta} disabled>
-          <Text style={styles.ctaLabel}>Upload photo (coming soon)</Text>
+      <ScrollView contentContainerStyle={styles.content}>
+        <Text style={styles.label}>1. Choose an astrologer</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.astrologerRow}>
+          {(astrologers ?? []).map((a) => (
+            <Pressable
+              key={a.userId}
+              style={[styles.astrologerChip, selectedId === a.userId && styles.astrologerChipSelected]}
+              onPress={() => setSelectedId(a.userId)}
+            >
+              <Avatar uri={a.user?.avatarUrl} size={48} />
+              <Text style={styles.astrologerName} numberOfLines={1}>
+                {a.user?.displayName || 'Astrologer'}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+
+        <Text style={styles.label}>2. Photograph your cup</Text>
+        <Pressable style={styles.frame} onPress={pickPhoto}>
+          {photoUri ? (
+            <Image source={{ uri: photoUri }} style={styles.photo} />
+          ) : (
+            <Text style={styles.frameLabel}>Tap to take or choose a photo</Text>
+          )}
         </Pressable>
-      </View>
+
+        {orderStatus && <Text style={styles.status}>{orderStatus}</Text>}
+
+        <Pressable
+          style={[styles.cta, (!selectedId || !photoUri || submitting) && styles.ctaDisabled]}
+          onPress={submit}
+          disabled={!selectedId || !photoUri || submitting}
+        >
+          {submitting ? <ActivityIndicator color={color.void} /> : <Text style={styles.ctaLabel}>Order falı</Text>}
+        </Pressable>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: color.void },
-  content: { flex: 1, padding: space[5], justifyContent: 'center', gap: space[5] },
+  content: { padding: space[5], gap: space[4] },
+  label: { ...type.displayXs, color: color.ink },
+  astrologerRow: { gap: space[3], paddingVertical: space[1] },
+  astrologerChip: {
+    alignItems: 'center',
+    gap: space[1],
+    width: 72,
+    padding: space[2],
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  astrologerChipSelected: { borderColor: color.coral, backgroundColor: color.surface },
+  astrologerName: { ...type.caption, color: color.inkMuted, textTransform: 'none' },
   frame: {
     aspectRatio: 1,
     borderRadius: radius.xl,
@@ -38,15 +120,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: space[6],
+    overflow: 'hidden',
   },
+  photo: { width: '100%', height: '100%' },
   frameLabel: { ...type.bodyM, color: color.inkMuted, textAlign: 'center' },
-  helper: { ...type.bodyS, color: color.inkMuted, textAlign: 'center' },
+  status: { ...type.bodyS, color: color.gold, textAlign: 'center' },
   cta: {
-    backgroundColor: color.surface2,
+    backgroundColor: color.coral,
     borderRadius: radius.md,
     paddingVertical: space[4],
     alignItems: 'center',
-    opacity: 0.6,
   },
-  ctaLabel: { ...type.label, color: color.inkMuted, textTransform: 'none', fontSize: 15 },
+  ctaDisabled: { opacity: 0.4 },
+  ctaLabel: { ...type.label, color: color.void, textTransform: 'none', fontSize: 15 },
 });
