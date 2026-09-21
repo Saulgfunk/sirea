@@ -1,21 +1,21 @@
 import { StyleSheet, Text, View } from 'react-native';
 
+import type { BadgeType } from '../api/types';
 import { color, radius, space, type } from '../theme/tokens';
-import type { Badge } from '../data/mock';
 
 // Verified Pro = gold (trust/credibility), Top Rated = purple (algorithmic/mystical layer).
 // Never swap or blend these — CLAUDE.md § Key architectural constraints.
-const LABEL: Record<Badge, string> = {
+const LABEL: Record<BadgeType, string> = {
   verified_pro: 'Verified Pro',
   top_rated: 'Top Rated',
 };
 
-const TINT: Record<Badge, string> = {
+const TINT: Record<BadgeType, string> = {
   verified_pro: color.gold,
   top_rated: color.purple,
 };
 
-export function BadgePill({ badge }: { badge: Badge }) {
+export function BadgePill({ badge }: { badge: BadgeType }) {
   const tint = TINT[badge];
   return (
     <View style={[styles.pill, { borderColor: tint }]}>

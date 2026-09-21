@@ -1,37 +1,96 @@
 import { Link } from 'expo-router';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { sireaApi } from '../../api/sirea';
 import { BadgePill } from '../../components/BadgePill';
-import { astrologers, posts } from '../../data/mock';
+import { useAuth } from '../../auth/AuthContext';
+import { useApi } from '../../hooks/useApi';
 import { color, radius, space, type } from '../../theme/tokens';
 
+function timeAgo(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  const hours = Math.floor(ms / (1000 * 60 * 60));
+  if (hours < 1) return 'just now';
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+// The stories row (mock data had one) is dropped for now — it'd need its own
+// "followed astrologers" fetch and GET /feed doesn't return astrologer avatar
+// data richly enough to make it worth a second request yet.
 export default function FeedScreen() {
+  const { user, loading: authLoading } = useAuth();
+  const { data, loading, error, refetch } = useApi(() => sireaApi.feed.get(), [user?.id]);
+
+  if (authLoading) return null;
+
+  if (!user) {
+    return (
+      <SafeAreaView style={styles.screen} edges={['top']}>
+        <View style={styles.centered}>
+          <Text style={styles.emptyText}>Log in from the Profile tab to see your feed.</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.screen} edges={['top']}>
+        <View style={styles.centered}>
+          <ActivityIndicator color={color.coral} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (error) {
+    return (
+      <SafeAreaView style={styles.screen} edges={['top']}>
+        <View style={styles.centered}>
+          <Text style={styles.emptyText}>{error}</Text>
+          <Pressable onPress={refetch}>
+            <Text style={styles.retry}>Retry</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <FlatList
-        data={posts}
+        data={data?.posts ?? []}
         keyExtractor={(p) => p.id}
         contentContainerStyle={styles.list}
-        ListHeaderComponent={<StoriesRow />}
+        onRefresh={refetch}
+        refreshing={loading}
+        ListEmptyComponent={
+          <View style={styles.centered}>
+            <Text style={styles.emptyText}>
+              No posts yet — follow astrologers from Discover to see their content here.
+            </Text>
+          </View>
+        }
         renderItem={({ item }) => {
-          const astrologer = astrologers.find((a) => a.id === item.astrologerId)!;
+          const astrologer = item.astrologer;
           return (
-            <Link href={{ pathname: '/astrologer/[id]', params: { id: astrologer.id } }} asChild>
+            <Link href={{ pathname: '/astrologer/[id]', params: { id: item.astrologerId } }} asChild>
               <Pressable style={styles.card}>
                 <View style={styles.cardHeader}>
-                  <View style={[styles.avatar, { backgroundColor: astrologer.avatarColor }]} />
+                  <View style={styles.avatar} />
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.authorName}>{astrologer.name}</Text>
-                    <Text style={styles.timestamp}>{item.createdAt} ago</Text>
+                    <Text style={styles.authorName}>{astrologer?.user?.displayName || 'Astrologer'}</Text>
+                    <Text style={styles.timestamp}>{timeAgo(item.createdAt)}</Text>
                   </View>
                   <View style={styles.badgeRow}>
-                    {astrologer.badges.map((b) => (
-                      <BadgePill key={b} badge={b} />
+                    {astrologer?.badges.map((b) => (
+                      <BadgePill key={b.id} badge={b.type} />
                     ))}
                   </View>
                 </View>
-                <Text style={styles.postBody}>{item.body}</Text>
+                {item.body && <Text style={styles.postBody}>{item.body}</Text>}
               </Pressable>
             </Link>
           );
@@ -41,35 +100,12 @@ export default function FeedScreen() {
   );
 }
 
-function StoriesRow() {
-  return (
-    <FlatList
-      horizontal
-      data={astrologers}
-      keyExtractor={(a) => a.id}
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.stories}
-      renderItem={({ item }) => (
-        <Link href={{ pathname: '/astrologer/[id]', params: { id: item.id } }} asChild>
-          <Pressable style={styles.storyItem}>
-            <View style={[styles.storyAvatar, { backgroundColor: item.avatarColor }]} />
-            <Text style={styles.storyName} numberOfLines={1}>
-              {item.name.split(' ')[0]}
-            </Text>
-          </Pressable>
-        </Link>
-      )}
-    />
-  );
-}
-
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: color.void },
-  list: { padding: space[5], gap: space[4] },
-  stories: { gap: space[4], paddingBottom: space[5] },
-  storyItem: { alignItems: 'center', width: 64, gap: space[1] },
-  storyAvatar: { width: 56, height: 56, borderRadius: radius.pill, borderWidth: 2, borderColor: color.coral },
-  storyName: { ...type.caption, color: color.inkMuted, textTransform: 'none' },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: space[6], gap: space[3] },
+  emptyText: { ...type.bodyM, color: color.inkMuted, textAlign: 'center' },
+  retry: { ...type.label, color: color.coral, textTransform: 'none' },
+  list: { padding: space[5], gap: space[4], flexGrow: 1 },
   card: {
     backgroundColor: color.surface,
     borderRadius: radius.lg,
@@ -79,7 +115,7 @@ const styles = StyleSheet.create({
     gap: space[3],
   },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: space[3] },
-  avatar: { width: 40, height: 40, borderRadius: radius.pill },
+  avatar: { width: 40, height: 40, borderRadius: radius.pill, backgroundColor: color.surface2 },
   authorName: { ...type.displayS, color: color.ink },
   timestamp: { ...type.caption, color: color.inkMuted, textTransform: 'none' },
   badgeRow: { flexDirection: 'row', gap: space[1] },

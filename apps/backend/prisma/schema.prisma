@@ -93,11 +93,15 @@ enum FraudSignalStatus {
   cleared
 }
 
+/// Not in CLAUDE.md's entity list, but the PRD (§7) explicitly calls for a
+/// display name on profiles and there was nowhere to put one — added here
+/// since it's a User-level concern (any user, not just astrologers).
 model User {
   id            String    @id @default(cuid())
   email         String?   @unique
   phone         String?   @unique
   passwordHash  String    @map("password_hash")
+  displayName   String?   @map("display_name")
   role          UserRole  @default(user)
   emailVerifiedAt DateTime? @map("email_verified_at")
   createdAt     DateTime  @default(now()) @map("created_at")

@@ -1,54 +1,116 @@
-import { useLocalSearchParams } from 'expo-router';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { ApiError } from '../../api/client';
+import { sireaApi } from '../../api/sirea';
+import { useAuth } from '../../auth/AuthContext';
 import { BadgePill } from '../../components/BadgePill';
-import { astrologers } from '../../data/mock';
+import { useApi } from '../../hooks/useApi';
 import { color, radius, space, type } from '../../theme/tokens';
 
 export default function AstrologerProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const astrologer = astrologers.find((a) => a.id === id);
+  const router = useRouter();
+  const { user } = useAuth();
+  const { data: astrologer, loading, error } = useApi(() => sireaApi.astrologers.get(id), [id]);
+  const { data: slots } = useApi(() => sireaApi.astrologers.availability(id), [id]);
+  const [following, setFollowing] = useState(false);
+  const [joining, setJoining] = useState<string | null>(null);
 
-  if (!astrologer) {
+  async function follow() {
+    if (!user) {
+      Alert.alert('Log in required', 'Log in from the Profile tab to follow astrologers.');
+      return;
+    }
+    setFollowing(true);
+    try {
+      await sireaApi.astrologers.follow(id);
+      Alert.alert('Following', "You'll see their posts in your feed.");
+    } catch (err) {
+      Alert.alert('Could not follow', err instanceof ApiError ? err.message : 'Something went wrong');
+    } finally {
+      setFollowing(false);
+    }
+  }
+
+  async function joinSlot(slotId: string) {
+    if (!user) {
+      Alert.alert('Log in required', 'Log in from the Profile tab to book a session.');
+      return;
+    }
+    setJoining(slotId);
+    try {
+      await sireaApi.sessions.join(slotId);
+      Alert.alert('Booked', 'Your session is confirmed — check back once video/voice is available.');
+    } catch (err) {
+      Alert.alert('Could not book', err instanceof ApiError ? err.message : 'Something went wrong');
+    } finally {
+      setJoining(null);
+    }
+  }
+
+  if (loading) {
     return (
-      <View style={styles.screen}>
-        <Text style={styles.name}>Astrologer not found</Text>
+      <View style={[styles.screen, styles.centered]}>
+        <ActivityIndicator color={color.coral} />
+      </View>
+    );
+  }
+
+  if (error || !astrologer) {
+    return (
+      <View style={[styles.screen, styles.centered]}>
+        <Text style={styles.name}>{error ?? 'Astrologer not found'}</Text>
       </View>
     );
   }
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <View style={[styles.avatar, { backgroundColor: astrologer.avatarColor }]} />
-      <Text style={styles.name}>{astrologer.name}</Text>
+      <View style={styles.avatar} />
+      <Text style={styles.name}>{astrologer.user?.displayName || 'Astrologer'}</Text>
       <View style={styles.badgeRow}>
         {astrologer.badges.length ? (
-          astrologer.badges.map((b) => <BadgePill key={b} badge={b} />)
+          astrologer.badges.map((b) => <BadgePill key={b.id} badge={b.type} />)
         ) : (
           <Text style={styles.noBadge}>No badges yet</Text>
         )}
       </View>
-      <Text style={styles.bio}>{astrologer.bio}</Text>
+      {astrologer.bio && <Text style={styles.bio}>{astrologer.bio}</Text>}
 
       <View style={styles.statsRow}>
-        <Stat label="Sessions" value={String(astrologer.stats.sessionsCompleted)} />
-        <Stat label="Avg rating" value={astrologer.stats.avgRating.toFixed(1)} />
-        <Stat label="Ratings" value={String(astrologer.stats.ratingCount)} />
-        <Stat label="Followers" value={String(astrologer.stats.followerCount)} />
+        <Stat label="Sessions" value={String(astrologer.sessionsCompleted)} />
+        <Stat label="Avg rating" value={astrologer.avgRating.toFixed(1)} />
+        <Stat label="Ratings" value={String(astrologer.ratingCount)} />
+        <Stat label="Followers" value={String(astrologer.followerCount)} />
       </View>
 
-      <Pressable
-        style={styles.bookButton}
-        onPress={() =>
-          Alert.alert(
-            'Booking not wired up yet',
-            'Session booking, payment, and in-app video/voice depend on the backend and the still-open payment/market-scope questions in CLAUDE.md.'
-          )
-        }
-      >
-        <Text style={styles.bookButtonLabel}>
-          {astrologer.priceFrom === 0 ? 'Book a free session' : `Book a session — from $${astrologer.priceFrom}`}
-        </Text>
+      <Pressable style={styles.followButton} onPress={follow} disabled={following}>
+        <Text style={styles.followButtonLabel}>{following ? 'Following…' : 'Follow'}</Text>
+      </Pressable>
+
+      <Text style={styles.sectionTitle}>Open session slots</Text>
+      {!slots?.length && <Text style={styles.noSlots}>No open slots right now.</Text>}
+      {slots?.map((slot) => (
+        <Pressable
+          key={slot.id}
+          style={styles.slotCard}
+          onPress={() => joinSlot(slot.id)}
+          disabled={joining === slot.id}
+        >
+          <View>
+            <Text style={styles.slotTime}>{new Date(slot.scheduledAt).toLocaleString()}</Text>
+            <Text style={styles.slotMeta}>
+              {slot.durationMinutes} min · {slot.paymentModel === 'a_la_carte' ? `$${slot.price}` : 'Subscription'}
+            </Text>
+          </View>
+          {joining === slot.id ? <ActivityIndicator color={color.coral} /> : <Text style={styles.bookLabel}>Book</Text>}
+        </Pressable>
+      ))}
+
+      <Pressable style={styles.backLink} onPress={() => router.back()}>
+        <Text style={styles.backLinkLabel}>Back</Text>
       </Pressable>
     </ScrollView>
   );
@@ -65,8 +127,9 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: color.void },
+  centered: { alignItems: 'center', justifyContent: 'center' },
   content: { padding: space[5], alignItems: 'center', gap: space[3] },
-  avatar: { width: 96, height: 96, borderRadius: radius.pill, marginBottom: space[2] },
+  avatar: { width: 96, height: 96, borderRadius: radius.pill, backgroundColor: color.surface2, marginBottom: space[2] },
   name: { ...type.displayM, color: color.ink },
   badgeRow: { flexDirection: 'row', gap: space[2] },
   noBadge: { ...type.caption, color: color.inkMuted, textTransform: 'none' },
@@ -85,14 +148,30 @@ const styles = StyleSheet.create({
   stat: { alignItems: 'center', gap: space[1] },
   statValue: { ...type.displayS, color: color.gold },
   statLabel: { ...type.caption, color: color.inkMuted, textTransform: 'none' },
-  bookButton: {
-    marginTop: space[5],
-    backgroundColor: color.coral,
+  followButton: {
+    backgroundColor: color.surface2,
     borderRadius: radius.md,
-    paddingVertical: space[4],
+    paddingVertical: space[3],
     paddingHorizontal: space[6],
-    width: '100%',
     alignItems: 'center',
   },
-  bookButtonLabel: { ...type.label, color: color.void, textTransform: 'none', fontSize: 15 },
+  followButtonLabel: { ...type.label, color: color.ink, textTransform: 'none', fontSize: 14 },
+  sectionTitle: { ...type.displayXs, color: color.ink, alignSelf: 'flex-start', marginTop: space[5] },
+  noSlots: { ...type.bodyS, color: color.inkMuted },
+  slotCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+    backgroundColor: color.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: color.border,
+    padding: space[4],
+  },
+  slotTime: { ...type.bodyM, color: color.ink },
+  slotMeta: { ...type.caption, color: color.inkMuted, textTransform: 'none' },
+  bookLabel: { ...type.label, color: color.coral, textTransform: 'none', fontSize: 14 },
+  backLink: { marginTop: space[5] },
+  backLinkLabel: { ...type.bodyS, color: color.inkMuted },
 });

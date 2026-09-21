@@ -19,7 +19,11 @@ feedRouter.get('/', requireAuth, async (req, res) => {
 
   const posts = await prisma.post.findMany({
     where: { astrologerId: { in: astrologerIds } },
-    include: { astrologer: { include: { badges: { where: { revokedAt: null } } } } },
+    include: {
+      astrologer: {
+        include: { badges: { where: { revokedAt: null } }, user: { select: { id: true, displayName: true } } },
+      },
+    },
     orderBy: { createdAt: 'desc' },
     take: 50,
   });
