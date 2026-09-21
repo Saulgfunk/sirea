@@ -1,0 +1,351 @@
+// Sirea data model — mirrors the entity list in CLAUDE.md and
+// docs/08-Technical-Architecture.md §3. Field lists are illustrative there,
+// not exhaustive; this schema fleshes them out to something migratable,
+// but should still be treated as a first pass, not a frozen contract.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  user
+  astrologer
+  admin
+}
+
+enum BadgeType {
+  verified_pro
+  top_rated
+}
+
+enum BadgeGrantedVia {
+  application
+  platform_direct
+}
+
+enum BadgeApplicationStatus {
+  pending
+  approved
+  rejected
+}
+
+enum PostType {
+  text
+  image
+  video
+}
+
+enum SessionType {
+  private
+  group
+  kahve_fali_live
+}
+
+enum PaymentModel {
+  bundled
+  a_la_carte
+}
+
+enum SessionStatus {
+  scheduled
+  completed
+  cancelled
+  no_show
+}
+
+enum KahveFaliStatus {
+  pending
+  delivered
+}
+
+enum WalletTransactionType {
+  topup
+  spend
+  refund
+  referral_bonus
+}
+
+enum SubscriptionTier {
+  free
+  premium
+  premium_credit
+}
+
+enum SubscriptionStatus {
+  active
+  cancelled
+  past_due
+}
+
+enum FraudSignalEntityType {
+  rating
+  session
+  referral_invite
+}
+
+enum FraudSignalStatus {
+  flagged
+  reviewed
+  cleared
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String?   @unique
+  phone         String?   @unique
+  passwordHash  String    @map("password_hash")
+  role          UserRole  @default(user)
+  emailVerifiedAt DateTime? @map("email_verified_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  profile           Profile?
+  astrologerProfile AstrologerProfile?
+  walletAccount     WalletAccount?
+  subscription      Subscription?
+
+  follows            Follow[]              @relation("UserFollows")
+  sessionsAsClient   SessionParticipant[]
+  kahveFaliOrders    KahveFaliOrder[]
+  ratingsGiven       Rating[]
+  reviewedApplications BadgeApplication[]  @relation("ApplicationReviewer")
+
+  @@map("users")
+}
+
+/// Birth data is sensitive personal data (CLAUDE.md, docs/08-Technical-Architecture.md §6)
+/// — encrypt at rest and restrict access at the application layer; this schema only
+/// defines shape, not the encryption strategy itself.
+model Profile {
+  userId         String    @id @map("user_id")
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  birthDate      DateTime? @map("birth_date")
+  birthTime      String?   @map("birth_time")
+  birthPlace     String?   @map("birth_place")
+  sunSign        String?   @map("sun_sign")
+  natalChartData Json?     @map("natal_chart_data")
+
+  @@map("profiles")
+}
+
+model AstrologerProfile {
+  userId      String   @id @map("user_id")
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bio         String?
+  specialties String[]
+  languages   String[]
+
+  // Denormalized stats (CLAUDE.md: "raw, user-interpretable stats", never a hidden rank).
+  // Kept here for fast profile reads; recompute from source rows rather than trusting
+  // this as the sole record once real session/rating volume exists.
+  sessionsCompleted Int   @default(0) @map("sessions_completed")
+  avgRating         Float @default(0) @map("avg_rating")
+  ratingCount       Int   @default(0) @map("rating_count")
+  followerCount     Int   @default(0) @map("follower_count")
+
+  badges             Badge[]
+  badgeApplications  BadgeApplication[]
+  followers          Follow[]             @relation("AstrologerFollowers")
+  posts              Post[]
+  sessions           Session[]
+  kahveFaliOrders    KahveFaliOrder[]
+  ratings            Rating[]
+  referralInvites    ReferralInvite[]
+
+  @@map("astrologer_profiles")
+}
+
+/// Independently revocable, structurally separate from Top Rated — never collapse
+/// into a single "trust score" (CLAUDE.md § Key architectural constraints).
+model Badge {
+  id          String          @id @default(cuid())
+  astrologerId String         @map("astrologer_id")
+  astrologer  AstrologerProfile @relation(fields: [astrologerId], references: [userId], onDelete: Cascade)
+  type        BadgeType
+  grantedVia  BadgeGrantedVia @map("granted_via")
+  grantedAt   DateTime        @default(now()) @map("granted_at")
+  revokedAt   DateTime?       @map("revoked_at")
+
+  @@map("badges")
+}
+
+model BadgeApplication {
+  id             String                  @id @default(cuid())
+  astrologerId   String                  @map("astrologer_id")
+  astrologer     AstrologerProfile       @relation(fields: [astrologerId], references: [userId], onDelete: Cascade)
+  answers        Json
+  status         BadgeApplicationStatus  @default(pending)
+  reviewerId     String?                 @map("reviewer_id")
+  reviewer       User?                   @relation("ApplicationReviewer", fields: [reviewerId], references: [id])
+  decisionReason String?                 @map("decision_reason")
+  reapplyAfter   DateTime?               @map("reapply_after")
+  createdAt      DateTime                @default(now()) @map("created_at")
+
+  @@map("badge_applications")
+}
+
+model Follow {
+  followerUserId String            @map("follower_user_id")
+  follower       User              @relation("UserFollows", fields: [followerUserId], references: [id], onDelete: Cascade)
+  astrologerId   String            @map("astrologer_id")
+  astrologer     AstrologerProfile @relation("AstrologerFollowers", fields: [astrologerId], references: [userId], onDelete: Cascade)
+  createdAt      DateTime          @default(now()) @map("created_at")
+
+  @@id([followerUserId, astrologerId])
+  @@map("follows")
+}
+
+model Post {
+  id           String            @id @default(cuid())
+  astrologerId String            @map("astrologer_id")
+  astrologer   AstrologerProfile @relation(fields: [astrologerId], references: [userId], onDelete: Cascade)
+  type         PostType
+  body         String?
+  mediaUrl     String?           @map("media_url")
+  createdAt    DateTime          @default(now()) @map("created_at")
+
+  @@map("posts")
+}
+
+/// Cancellation/reschedule policy is an open question (CLAUDE.md) — status transitions
+/// are modeled, but the refund/credit rules that trigger them are not yet implemented.
+model Session {
+  id              String        @id @default(cuid())
+  type            SessionType
+  astrologerId    String        @map("astrologer_id")
+  astrologer      AstrologerProfile @relation(fields: [astrologerId], references: [userId], onDelete: Cascade)
+  scheduledAt     DateTime      @map("scheduled_at")
+  durationMinutes Int           @map("duration_minutes")
+  price           Decimal       @db.Decimal(10, 2)
+  paymentModel    PaymentModel  @map("payment_model")
+  status          SessionStatus @default(scheduled)
+  createdAt       DateTime      @default(now()) @map("created_at")
+
+  participants SessionParticipant[]
+  ratings      Rating[]
+
+  @@map("sessions")
+}
+
+model SessionParticipant {
+  sessionId String    @map("session_id")
+  session   Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  userId    String    @map("user_id")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt  DateTime? @map("joined_at")
+  leftAt    DateTime? @map("left_at")
+
+  @@id([sessionId, userId])
+  @@map("session_participants")
+}
+
+/// Retention/deletion policy for the uploaded photo is an open question
+/// (CLAUDE.md) — slaDeadline exists so a TTL/deletion job can hook in later
+/// without a schema change, per the architecture doc's advice.
+model KahveFaliOrder {
+  id                String          @id @default(cuid())
+  userId            String          @map("user_id")
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  astrologerId      String          @map("astrologer_id")
+  astrologer        AstrologerProfile @relation(fields: [astrologerId], references: [userId], onDelete: Cascade)
+  photoUrl          String          @map("photo_url")
+  status            KahveFaliStatus @default(pending)
+  interpretationText String?        @map("interpretation_text")
+  orderedAt         DateTime        @default(now()) @map("ordered_at")
+  deliveredAt       DateTime?       @map("delivered_at")
+  slaDeadline       DateTime        @map("sla_deadline")
+
+  ratings Rating[]
+
+  @@map("kahve_fali_orders")
+}
+
+/// Eligibility (only completed paid/eligible-free sessions may rate) is enforced
+/// at the application layer, not by this schema alone — see check-open-questions
+/// skill and CLAUDE.md § Key architectural constraints before touching rating logic.
+model Rating {
+  id               String   @id @default(cuid())
+  sessionId        String?  @map("session_id")
+  session          Session? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  kahveFaliOrderId String?  @map("kahve_fali_order_id")
+  kahveFaliOrder   KahveFaliOrder? @relation(fields: [kahveFaliOrderId], references: [id], onDelete: SetNull)
+  raterUserId      String   @map("rater_user_id")
+  rater            User     @relation(fields: [raterUserId], references: [id], onDelete: Cascade)
+  astrologerId     String   @map("astrologer_id")
+  astrologer       AstrologerProfile @relation(fields: [astrologerId], references: [userId], onDelete: Cascade)
+  score            Int
+  reviewText        String?  @map("review_text")
+  eligible          Boolean  @default(true)
+  weight            Float    @default(1)
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  @@map("ratings")
+}
+
+/// Append-only ledger (CLAUDE.md): balance is derived from WalletTransaction rows,
+/// never written directly outside of that ledger.
+model WalletAccount {
+  userId  String  @id @map("user_id")
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balance Decimal @default(0) @db.Decimal(10, 2)
+
+  transactions WalletTransaction[]
+
+  @@map("wallet_accounts")
+}
+
+model WalletTransaction {
+  id               String                @id @default(cuid())
+  walletId         String                @map("wallet_id")
+  wallet           WalletAccount         @relation(fields: [walletId], references: [userId], onDelete: Cascade)
+  type             WalletTransactionType
+  amount           Decimal               @db.Decimal(10, 2)
+  relatedSessionId String?               @map("related_session_id")
+  createdAt        DateTime              @default(now()) @map("created_at")
+
+  @@map("wallet_transactions")
+}
+
+model Subscription {
+  id          String              @id @default(cuid())
+  userId      String              @unique @map("user_id")
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tier        SubscriptionTier    @default(free)
+  status      SubscriptionStatus  @default(active)
+  renewalDate DateTime?           @map("renewal_date")
+
+  @@map("subscriptions")
+}
+
+model ReferralInvite {
+  id             String            @id @default(cuid())
+  astrologerId   String            @map("astrologer_id")
+  astrologer     AstrologerProfile @relation(fields: [astrologerId], references: [userId], onDelete: Cascade)
+  code           String            @unique
+  invitedUserId  String?           @map("invited_user_id")
+  convertedAt    DateTime?         @map("converted_at")
+  rewardIssued   Boolean           @default(false) @map("reward_issued")
+  createdAt      DateTime          @default(now()) @map("created_at")
+
+  @@map("referral_invites")
+}
+
+/// Polymorphic flag on a Rating, Session, or ReferralInvite (CLAUDE.md). MVP posture
+/// is "log now, automate later" — this table is written to from day one, but nothing
+/// should auto-act on it without a human in the loop (docs/04-Trust-and-Safety.md).
+model FraudSignal {
+  id              String                 @id @default(cuid())
+  relatedEntityType FraudSignalEntityType @map("related_entity_type")
+  relatedEntityId   String                @map("related_entity_id")
+  signalType        String                @map("signal_type")
+  score             Float
+  status            FraudSignalStatus     @default(flagged)
+  reviewedBy        String?               @map("reviewed_by")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("fraud_signals")
+}
