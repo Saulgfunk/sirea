@@ -3,6 +3,7 @@ import type {
   AstrologerProfile,
   AuthResponse,
   FeedResponse,
+  Post,
   Session,
   WalletAccount,
   WalletTransaction,
@@ -22,8 +23,12 @@ export const sireaApi = {
   astrologers: {
     list: () => api<AstrologerProfile[]>('/astrologers'),
     get: (id: string) => api<AstrologerProfile>(`/astrologers/${id}`),
+    create: (data: { bio?: string; specialties: string[]; languages: string[] }) =>
+      api<AstrologerProfile>('/astrologers', { method: 'POST', body: data }),
     follow: (id: string) => api<void>(`/astrologers/${id}/follow`, { method: 'POST' }),
     availability: (id: string) => api<Session[]>(`/astrologers/${id}/availability`),
+    createPost: (id: string, data: { type: 'text' | 'image' | 'video'; body?: string; mediaUrl?: string }) =>
+      api<Post>(`/astrologers/${id}/posts`, { method: 'POST', body: data }),
   },
   sessions: {
     join: (id: string) => api<void>(`/sessions/${id}/join`, { method: 'POST' }),
