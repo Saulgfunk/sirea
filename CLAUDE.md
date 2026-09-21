@@ -15,7 +15,7 @@ Notable constraints baked into the model: `WalletTransaction` is meant to be an 
 ## Tech stack (recommended, not mandated — see `docs/08-Technical-Architecture.md` §1–2)
 
 - **Mobile**: React Native · **Web**: Next.js · **Backend**: Node.js + TypeScript · **DB**: PostgreSQL (relational integrity matters for wallet ledgers and double-booking prevention) · **Realtime**: WebSockets
-- **Payments**: Stripe (web/wallet top-up) + Apple In-App Purchase / Google Play Billing (mobile subscriptions — required by platform policy, Stripe alone can't do mobile subscription billing)
+- **Payments**: Stripe (web/wallet top-up) + Apple In-App Purchase / Google Play Billing (mobile subscriptions — required by platform policy, Stripe alone can't do mobile subscription billing). Market scope is resolved (see Open Questions), but building this integration is explicitly still on hold — don't start it without being asked.
 - **Video/voice**: LiveKit (self-hostable, avoids per-minute vendor lock-in)
 - **Chart calculation**: Swiss Ephemeris (license terms not yet confirmed for commercial use — see open questions)
 - **Identity verification**: Persona/Onfido for identity, manual admin cross-reference for professional credentials
@@ -32,27 +32,26 @@ All of the above is explicitly negotiable — swap freely if the developer has s
 - **Payout split is per-session-type, astrologer's choice**: bundled (subscription-pool, split by `sessions_i × avg_rating_i` share of the pool — rating-weighted deliberately, to avoid rewarding high-volume/low-quality gaming) vs. à la carte (flat commission % per booking, from wallet credit). See `docs/08-Technical-Architecture.md` §5 for the proposed formula — **the actual commission % and pool size are unresolved**, see below.
 - **Wallet top-up and subscription are orthogonal.** Neither requires the other. Wallet funds à la carte sessions/kahve falı; subscription tier gates premium group sessions and (Premium+Credit tier) auto-applies monthly credit.
 - **Architecture should not hard-code English strings**, even though English is the only MVP-shipped language — retrofit cost for future localization is the reason, not an MVP deliverable itself.
+- **Data protection applies per-user, not per-deployment.** Market scope is resolved as English/international-first, but that does *not* mean "pick one compliance regime" — apply GDPR to EU users and KVKK to Turkish users based on each user's actual location. Design birth-data storage, retention/deletion, and consent flows around per-user jurisdiction branching from the start.
 
-## Open questions — confirm before building dependent code
+## Resolved
 
-These are unresolved in the source docs, not implementation details I can infer. Do not write code whose behavior depends on these until confirmed — flagged explicitly below by what they block.
+1. **Market scope: English, international-first.** Confirmed 2026-09-21 (Turkey is one market among several, not the sole launch market — supersedes the PRD's earlier Turkey-first framing). Concrete implications:
+   - **Data protection is geo-based, not a single blanket regime**: apply GDPR to a user's data when they're in the EU, KVKK when they're in Turkey — determined per-user by actual location/jurisdiction, not picked once for the whole deployment. Any data-handling code (birth data storage, retention/deletion, consent flows) should be written with this per-user branching in mind from the start, not retrofitted.
+   - **Kahve falı's product role**: one specialty offering among several, not the platform's cultural anchor. `docs/design-system/README.md`'s visual/copy language was built under the earlier Turkey-first assumption and may need a revisit, though no one has asked for that pass yet.
+   - **Payment provider selection is explicitly still deferred** — confirming the market does *not* mean starting Stripe/Apple/Google/PayTR integration work. `POST /wallet/topup` and `POST /subscription/upgrade` (`apps/backend`) should stay stubbed (`501`) until explicitly told to build real payment processing. Don't treat "market is decided" as "go build payments."
 
-1. **English/international-first vs. Turkey-first go-to-market.** The PRD *proceeds on the assumption* that English is the interface language and go-to-market is international-first from MVP (Turkey as one market among several), but flags this as a meaningful shift from earlier Turkey-first discussion and asks for explicit confirmation. This is the single most consequential open item — it directly determines:
-   - **Payment provider**: Stripe/Apple/Google (international) vs. PayTR/Payguru-style rails (Turkey-specific)
-   - **Applicable data-protection regime**: GDPR (if EU users) vs. KVKK (if Turkey)
-   - **Kahve falı's product role**: cultural anchor (Turkey-first) vs. one specialty offering among several (international-first)
-   - **Verified Pro background-check sourcing**: may need to vary by market
-   - **Blocks specifically**: payment integration code, localization/string architecture decisions, any market-specific compliance work. Non-market-specific scaffolding (data model, API routes, UI shell) can proceed in parallel.
+2. **Commission %/bundled-pool sizing — confirmed as not needed right now** (2026-09-21). Not deprioritized because it's hard, just not currently wanted. Payout-crediting logic (astrologers actually getting paid a share of session/subscription revenue) stays unbuilt. Don't revisit this until asked — no need to keep raising it as a blocker in every session.
 
-2. **Exact commission percentage and bundled-pool sizing for the revenue-share formula.** `docs/08-Technical-Architecture.md` §5 proposes a concrete formula shape (rating-weighted pool split for bundled sessions; flat % for à la carte) but the actual numbers — platform commission % (15–25% suggested range, unconfirmed), what fraction of subscription revenue feeds the bundled pool, and whether the rating-weight curve should be linear or steeper — are business decisions, not resolved here. **Blocks**: any real payout/payment logic. Do not hardcode a commission number without confirming it first.
+## Still open
 
-3. Secondary open items (lower urgency, tracked in source docs, listed for completeness):
-   - Cancellation/reschedule and refund policy (`01-PRD.md` §8, `04-Trust-and-Safety.md` §5)
-   - Data retention/deletion policy for kahve falı photos and session recordings (`01-PRD.md` §10) — build the deletion-TTL *hook* now per the architecture doc's advice, even before the retention window itself is decided
-   - Which MVP-success framing is the priority: user demand, astrologer economics, or unit economics (`01-PRD.md` §2)
-   - Swiss Ephemeris commercial licensing terms (`08-Technical-Architecture.md` §2)
-   - Content moderation policy specifics (technical hook — automated first-pass filter — should exist regardless)
-   - Cooldown length for Verified Pro reapplication after rejection; Top Rated/rating-delay threshold tuning (both marked as suggested starting points, not validated)
+Lower-urgency items, tracked in source docs, not yet raised with the user:
+- Cancellation/reschedule and refund policy (`01-PRD.md` §8, `04-Trust-and-Safety.md` §5)
+- Data retention/deletion policy for kahve falı photos and session recordings (`01-PRD.md` §10) — build the deletion-TTL *hook* now per the architecture doc's advice, even before the retention window itself is decided
+- Which MVP-success framing is the priority: user demand, astrologer economics, or unit economics (`01-PRD.md` §2)
+- Swiss Ephemeris commercial licensing terms (`08-Technical-Architecture.md` §2)
+- Content moderation policy specifics (technical hook — automated first-pass filter — should exist regardless)
+- Cooldown length for Verified Pro reapplication after rejection; Top Rated/rating-delay threshold tuning (both marked as suggested starting points, not validated)
 
 ## Roadmap shape (see `docs/07-MVP-Roadmap.md` for full detail)
 
